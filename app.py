@@ -5,6 +5,8 @@ import shutil
 from bs4 import BeautifulSoup
 import colorama
 from colorama import Fore, Style
+from tqdm import tqdm
+import re
 
 # Initialiser colorama pour Windows
 colorama.init()
@@ -51,7 +53,6 @@ def get_user_input():
         project_name = input(f"{Fore.YELLOW}📁 Entrez le nom du dossier de destination: {Style.RESET_ALL}").strip()
         if project_name:
             # Nettoyer le nom du dossier (enlever les caractères spéciaux)
-            import re
             project_name = re.sub(r'[<>:"/\\|?*]', '_', project_name)
             break
         else:
@@ -77,91 +78,132 @@ os.makedirs(project_path, exist_ok=True)
 
 visited_links = []
 error_links = []
+total_files = 0
+downloaded_files = 0
 
+def update_progress_bar():
+    """Met à jour la barre de progression globale"""
+    global downloaded_files, total_files
+    if total_files > 0:
+        progress = (downloaded_files / total_files) * 100
+        print(f"\r{Fore.CYAN}📊 Progression globale: {Fore.GREEN}{downloaded_files}/{total_files}{Style.RESET_ALL} fichiers ({progress:.1f}%)", end="", flush=True)
 
 def save(bs, element, check):
+    global downloaded_files, total_files
     links = bs.find_all(element)
-
+    
+    # Compter les fichiers à télécharger
+    files_to_download = []
     for l in links:
         href = l.get("href")
         if href is not None and href not in visited_links:
             if check in href:
-                href = l.get("href")
-                print(f"{Fore.BLUE}📄 Téléchargement: {Fore.CYAN}{href}{Style.RESET_ALL}")
-                if "//" in href:
-                    path_s = href.split("/")
-                    file_name = ""
-                    for i in range(3, len(path_s)):
-                        file_name = file_name + "/" + path_s[i]
-                else:
-                    file_name = href
+                files_to_download.append(href)
+    
+    if files_to_download:
+        print(f"{Fore.YELLOW}🎨 Téléchargement des fichiers {check}...{Style.RESET_ALL}")
+        
+        # Barre de progression pour les fichiers CSS/JS
+        with tqdm(total=len(files_to_download), desc=f"📄 Fichiers {check}", 
+                 bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
+            
+            for href in files_to_download:
+                if href not in visited_links:
+                    pbar.set_description(f"📄 {check}: {os.path.basename(href)}")
+                    
+                    if "//" in href:
+                        path_s = href.split("/")
+                        file_name = ""
+                        for i in range(3, len(path_s)):
+                            file_name = file_name + "/" + path_s[i]
+                    else:
+                        file_name = href
 
-                l = site_name + file_name
+                    l = site_name + file_name
 
-                try:
-                    r = requests.get(l)
-                except requests.exceptions.ConnectionError:
-                    print(f"{Fore.RED}❌ Erreur de connexion: {href}{Style.RESET_ALL}")
-                    error_links.append(l)
-                    continue
+                    try:
+                        r = requests.get(l)
+                    except requests.exceptions.ConnectionError:
+                        error_links.append(l)
+                        pbar.update(1)
+                        continue
 
-                if r.status_code != 200:
-                    print(f"{Fore.RED}❌ Erreur HTTP {r.status_code}: {href}{Style.RESET_ALL}")
-                    error_links.append(l)
-                    continue
+                    if r.status_code != 200:
+                        error_links.append(l)
+                        pbar.update(1)
+                        continue
 
-                os.makedirs(os.path.dirname(project_path + file_name.split("?")[0]), exist_ok=True)
-                with open(project_path + file_name.split("?")[0], "wb") as f:
-                    f.write(r.text.encode('utf-8'))
-                    f.close()
+                    os.makedirs(os.path.dirname(project_path + file_name.split("?")[0]), exist_ok=True)
+                    with open(project_path + file_name.split("?")[0], "wb") as f:
+                        f.write(r.text.encode('utf-8'))
+                        f.close()
 
-                print(f"{Fore.GREEN}✅ Sauvegardé: {file_name.split('?')[0]}{Style.RESET_ALL}")
-                visited_links.append(l)
-
+                    visited_links.append(l)
+                    downloaded_files += 1
+                    update_progress_bar()
+                    pbar.update(1)
 
 def save_assets(html_text):
+    global downloaded_files, total_files
     bs = BeautifulSoup(html_text, "html.parser")
-    print(f"{Fore.YELLOW}🎨 Téléchargement des ressources CSS et JS...{Style.RESET_ALL}")
+    
+    # Traiter les CSS et JS
     save(bs=bs, element="link", check=".css")
     save(bs=bs, element="script", check=".js")
 
-    print(f"{Fore.YELLOW}🖼️  Téléchargement des images...{Style.RESET_ALL}")
+    # Traiter les images
     links = bs.find_all("img")
+    images_to_download = []
+    
     for l in links:
         href = l.get("src")
         if href is not None and href not in visited_links:
-            print(f"{Fore.BLUE}🖼️  Téléchargement image: {Fore.CYAN}{href}{Style.RESET_ALL}")
-            if "//" in href:
-                path_s = href.split("/")
-                file_name = ""
-                for i in range(3, len(path_s)):
-                    file_name = file_name + "/" + path_s[i]
-            else:
-                file_name = href
+            images_to_download.append(href)
+    
+    if images_to_download:
+        print(f"{Fore.YELLOW}🖼️  Téléchargement des images...{Style.RESET_ALL}")
+        
+        # Barre de progression pour les images
+        with tqdm(total=len(images_to_download), desc="🖼️ Images", 
+                 bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
+            
+            for href in images_to_download:
+                if href not in visited_links:
+                    pbar.set_description(f"🖼️ Image: {os.path.basename(href)}")
+                    
+                    if "//" in href:
+                        path_s = href.split("/")
+                        file_name = ""
+                        for i in range(3, len(path_s)):
+                            file_name = file_name + "/" + path_s[i]
+                    else:
+                        file_name = href
 
-            l = site_name + file_name
+                    l = site_name + file_name
 
-            try:
-                r = requests.get(l, stream=True)
-            except requests.exceptions.ConnectionError:
-                print(f"{Fore.RED}❌ Erreur de connexion: {href}{Style.RESET_ALL}")
-                error_links.append(l)
-                continue
+                    try:
+                        r = requests.get(l, stream=True)
+                    except requests.exceptions.ConnectionError:
+                        error_links.append(l)
+                        pbar.update(1)
+                        continue
 
-            if r.status_code != 200:
-                print(f"{Fore.RED}❌ Erreur HTTP {r.status_code}: {href}{Style.RESET_ALL}")
-                error_links.append(l)
-                continue
+                    if r.status_code != 200:
+                        error_links.append(l)
+                        pbar.update(1)
+                        continue
 
-            os.makedirs(os.path.dirname(project_path + file_name.split("?")[0]), exist_ok=True)
-            with open(project_path + file_name.split("?")[0], "wb") as f:
-                shutil.copyfileobj(r.raw, f)
+                    os.makedirs(os.path.dirname(project_path + file_name.split("?")[0]), exist_ok=True)
+                    with open(project_path + file_name.split("?")[0], "wb") as f:
+                        shutil.copyfileobj(r.raw, f)
 
-            print(f"{Fore.GREEN}✅ Image sauvegardée: {file_name.split('?')[0]}{Style.RESET_ALL}")
-            visited_links.append(l)
-
+                    visited_links.append(l)
+                    downloaded_files += 1
+                    update_progress_bar()
+                    pbar.update(1)
 
 def crawl(link):
+    global total_files, downloaded_files
     if "http://" not in link and "https://" not in link:
         link = site_name + link
 
@@ -194,10 +236,21 @@ def crawl(link):
             f.close()
 
         visited_links.append(link)
+        downloaded_files += 1
+        update_progress_bar()
+
+        # Analyser le contenu pour compter les fichiers à télécharger
+        soup = BeautifulSoup(r.text, "html.parser")
+        
+        # Compter les fichiers CSS, JS et images
+        css_files = [l.get("href") for l in soup.find_all("link") if l.get("href") and ".css" in l.get("href")]
+        js_files = [l.get("src") for l in soup.find_all("script") if l.get("src") and ".js" in l.get("src")]
+        img_files = [l.get("src") for l in soup.find_all("img") if l.get("src")]
+        
+        # Ajouter au total global
+        total_files += len(css_files) + len(js_files) + len(img_files)
 
         save_assets(r.text)
-
-        soup = BeautifulSoup(r.text, "html.parser")
 
         for link in soup.find_all('a'):
             try:
@@ -205,11 +258,15 @@ def crawl(link):
             except:
                 error_links.append(link.get("href"))
 
-
 print(f"{Fore.YELLOW}🌐 Démarrage du clonage de {site_name}...{Style.RESET_ALL}\n")
+
+# Initialiser le compteur total
+total_files = 1  # Au moins la page principale
+downloaded_files = 0
+
 crawl(site_name + "/")
 
-print(f"\n{Fore.GREEN}╔══════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
+print(f"\n\n{Fore.GREEN}╔══════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
 print(f"{Fore.GREEN}║                    RÉSUMÉ DU CLONAGE                        ║{Style.RESET_ALL}")
 print(f"{Fore.GREEN}╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}")
 
