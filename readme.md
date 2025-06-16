@@ -35,6 +35,21 @@ Le script vous demandera :
 - 🌐 L'URL du site à cloner
 - 📁 Le nom du dossier de destination
 
+Après avoir saisi l'URL et le dossier, le script vous demandera de choisir le type de clonage :
+
+- `1` : 📄 **Page unique** (copie uniquement la page actuelle)
+- `2` : 🌐 **Site complet** (copie toutes les pages liées)
+
+Exemple d'affichage :
+
+```text
+📋 Choisissez le type de clonage :
+1. 📄 Page unique (copie uniquement la page actuelle)
+2. 🌐 Site complet (copie toutes les pages liées)
+Votre choix (1 ou 2):
+```
+
+Tant que vous n'entrez pas 1 ou 2, le script redemandera votre choix.
 
 ## 📋 Prérequis
 
