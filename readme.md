@@ -15,7 +15,7 @@ Un outil Python simple et efficace pour cloner des sites web complets avec toute
 
 1. **Cloner le repository :**
    ```bash
-   git clone https://github.com/votre-username/Website-Cloner.git
+   git clone https://github.com/nathanndevvv/WebCloner.git
    cd Website-Cloner
    ```
 
@@ -35,10 +35,6 @@ Le script vous demandera :
 - 🌐 L'URL du site à cloner
 - 📁 Le nom du dossier de destination
 
-### Méthode en Ligne de Commande (Ancienne)
-```bash
-python app.py https://example.com nom_du_dossier
-```
 
 ## 📋 Prérequis
 
