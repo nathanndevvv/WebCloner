@@ -24,7 +24,7 @@ def print_banner():
 ║    ╚███╔███╔╝███████╗██████╔╝╚██████╗███████╗╚██████╔╝██║ ╚████║███████╗██║  ██║ ║
 ║     ╚══╝╚══╝ ╚══════╝╚═════╝  ╚═════╝╚══════╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ║
 ║                                                                                  ║
-║                    🌐 Site Web Cloner Tool 🌐                                   ║
+║                    🌐 Site Web Cloner Tool 🌐                                    ║
 ║                                                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════════════╝
 {Style.RESET_ALL}
@@ -34,7 +34,7 @@ def print_banner():
 def get_user_input():
     """Demande l'URL et le nom du fichier à l'utilisateur"""
     print(f"{Fore.CYAN}╔══════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}║                    Configuration requise                    ║{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}║                    Configuration requise                     ║{Style.RESET_ALL}")
     print(f"{Fore.CYAN}╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}")
     
     # Demander l'URL du site
@@ -48,6 +48,19 @@ def get_user_input():
         else:
             print(f"{Fore.RED}❌ L'URL ne peut pas être vide. Veuillez réessayer.{Style.RESET_ALL}")
     
+    # Demander le type de clonage
+    print(f"\n{Fore.CYAN}📋 Choisissez le type de clonage:{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}1. 📄 Page unique (copie uniquement la page actuelle){Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}2. 🌐 Site complet (copie toutes les pages liées){Style.RESET_ALL}")
+    
+    while True:
+        clone_type = input(f"{Fore.YELLOW}Votre choix (1 ou 2): {Style.RESET_ALL}").strip()
+        if clone_type in ['1', '2']:
+            clone_type = int(clone_type)
+            break
+        else:
+            print(f"{Fore.RED}❌ Veuillez entrer 1 ou 2.{Style.RESET_ALL}")
+    
     # Demander le nom du dossier de destination
     while True:
         project_name = input(f"{Fore.YELLOW}📁 Entrez le nom du dossier de destination: {Style.RESET_ALL}").strip()
@@ -58,17 +71,21 @@ def get_user_input():
         else:
             print(f"{Fore.RED}❌ Le nom du dossier ne peut pas être vide. Veuillez réessayer.{Style.RESET_ALL}")
     
-    return site_url, project_name
+    return site_url, project_name, clone_type
 
 # Afficher le banner
 print_banner()
 
 # Obtenir les entrées utilisateur
-site_name, project_name = get_user_input()
+site_name, project_name, clone_type = get_user_input()
 
 print(f"\n{Fore.GREEN}✅ Configuration validée:{Style.RESET_ALL}")
 print(f"   🌐 Site: {Fore.CYAN}{site_name}{Style.RESET_ALL}")
 print(f"   📁 Dossier: {Fore.CYAN}{project_name}{Style.RESET_ALL}")
+if clone_type == 1:
+    print(f"   📄 Type: {Fore.CYAN}Page unique{Style.RESET_ALL}")
+else:
+    print(f"   🌐 Type: {Fore.CYAN}Site complet{Style.RESET_ALL}")
 print(f"\n{Fore.YELLOW}🚀 Démarrage du clonage...{Style.RESET_ALL}\n")
 
 base_dir = os.getcwd()
@@ -252,11 +269,53 @@ def crawl(link):
 
         save_assets(r.text)
 
-        for link in soup.find_all('a'):
-            try:
-                crawl(link.get("href"))
-            except:
-                error_links.append(link.get("href"))
+        # Ne suivre les liens que si on clone le site complet
+        if clone_type == 2:
+            for link in soup.find_all('a'):
+                try:
+                    crawl(link.get("href"))
+                except:
+                    error_links.append(link.get("href"))
+
+def clone_single_page():
+    """Clone uniquement la page principale sans suivre les liens"""
+    global total_files, downloaded_files
+    
+    print(f"{Fore.YELLOW}📄 Clonage de la page unique: {site_name}{Style.RESET_ALL}\n")
+    
+    try:
+        r = requests.get(site_name)
+    except requests.exceptions.ConnectionError:
+        print(f"{Fore.RED}❌ Erreur de connexion au site{Style.RESET_ALL}")
+        sys.exit(1)
+
+    if r.status_code != 200:
+        print(f"{Fore.RED}❌ Réponse invalide du serveur{Style.RESET_ALL}")
+        sys.exit(1)
+    
+    print(f"{Fore.GREEN}📝 Création: {project_path}/index.html{Style.RESET_ALL}")
+    os.makedirs(project_path, exist_ok=True)
+    with open(project_path + "/index.html", "wb") as f:
+        text = r.text.replace(site_name, project_name)
+        f.write(text.encode('utf-8'))
+        f.close()
+
+    visited_links.append(site_name)
+    downloaded_files += 1
+    update_progress_bar()
+
+    # Analyser le contenu pour compter les fichiers à télécharger
+    soup = BeautifulSoup(r.text, "html.parser")
+    
+    # Compter les fichiers CSS, JS et images
+    css_files = [l.get("href") for l in soup.find_all("link") if l.get("href") and ".css" in l.get("href")]
+    js_files = [l.get("src") for l in soup.find_all("script") if l.get("src") and ".js" in l.get("src")]
+    img_files = [l.get("src") for l in soup.find_all("img") if l.get("src")]
+    
+    # Ajouter au total global
+    total_files += len(css_files) + len(js_files) + len(img_files)
+
+    save_assets(r.text)
 
 print(f"{Fore.YELLOW}🌐 Démarrage du clonage de {site_name}...{Style.RESET_ALL}\n")
 
@@ -264,11 +323,20 @@ print(f"{Fore.YELLOW}🌐 Démarrage du clonage de {site_name}...{Style.RESET_AL
 total_files = 1  # Au moins la page principale
 downloaded_files = 0
 
-crawl(site_name + "/")
+# Choisir le type de clonage
+if clone_type == 1:
+    clone_single_page()
+else:
+    crawl(site_name + "/")
 
 print(f"\n\n{Fore.GREEN}╔══════════════════════════════════════════════════════════════╗{Style.RESET_ALL}")
-print(f"{Fore.GREEN}║                    RÉSUMÉ DU CLONAGE                        ║{Style.RESET_ALL}")
+print(f"{Fore.GREEN}║                    RÉSUMÉ DU CLONAGE                         ║{Style.RESET_ALL}")
 print(f"{Fore.GREEN}╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}")
+
+if clone_type == 1:
+    print(f"\n{Fore.CYAN}📄 Type de clonage: {Fore.GREEN}Page unique{Style.RESET_ALL}")
+else:
+    print(f"\n{Fore.CYAN}🌐 Type de clonage: {Fore.GREEN}Site complet{Style.RESET_ALL}")
 
 print(f"\n{Fore.CYAN}📊 Liens traités ({len(visited_links)}):{Style.RESET_ALL}")
 for link in visited_links:
@@ -279,4 +347,7 @@ if error_links:
     for link in error_links:
         print(f"{Fore.RED}   ❌ {link}{Style.RESET_ALL}")
 
-print(f"\n{Fore.GREEN}🎉 Clonage terminé ! Le site a été sauvegardé dans: {Fore.CYAN}{project_path}{Style.RESET_ALL}")
+if clone_type == 1:
+    print(f"\n{Fore.GREEN}🎉 Clonage de la page terminé ! Le fichier a été sauvegardé dans: {Fore.CYAN}{project_path}/index.html{Style.RESET_ALL}")
+else:
+    print(f"\n{Fore.GREEN}🎉 Clonage du site terminé ! Le site a été sauvegardé dans: {Fore.CYAN}{project_path}{Style.RESET_ALL}")
